@@ -6,6 +6,12 @@ let currentPath = '/'; // 現在のパス
 
 // ==================== ユーティリティ関数 ====================
 
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 function formatDate(dateString) {
   const date = new Date(dateString);
   const now = new Date();
@@ -580,12 +586,16 @@ async function loadFiles(subprojectId, path = '/') {
       const icon = isFolder ? 'fa-folder text-yellow-500' : 'fa-file-alt text-gray-400';
       const nextPath = isFolder ? `${path === '/' ? '' : path}/${file.name}` : null;
       
+      // HTMLエスケープ処理
+      const escapedFileName = escapeHtml(file.name);
+      const escapedPath = nextPath ? escapeHtml(nextPath) : '';
+      
       return `
         <div class="flex items-center justify-between p-4 hover:bg-gray-50 ${index > 0 || path !== '/' ? 'border-t border-gray-200' : ''}">
-          <div class="flex items-center flex-1 ${isFolder ? 'cursor-pointer' : 'cursor-pointer'}" onclick="${isFolder ? `loadFiles(${subprojectId}, '${nextPath}')` : `showFileEditor(${file.id}, '${file.name}', \`${(file.content || '').replace(/`/g, '\\`')}\`, '${file.mime_type || 'text/plain'}')`}">
+          <div class="flex items-center flex-1 ${isFolder ? 'cursor-pointer' : 'cursor-pointer'}" onclick="${isFolder ? `loadFiles(${subprojectId}, '${escapedPath}')` : `loadAndShowFileEditor(${file.id})`}">
             <i class="fas ${icon} text-xl mr-4"></i>
             <div class="flex-1">
-              <h4 class="font-semibold text-gray-900">${file.name}</h4>
+              <h4 class="font-semibold text-gray-900">${escapedFileName}</h4>
               <p class="text-sm text-gray-600">
                 <i class="fas fa-user mr-1"></i>${file.updated_by_name}
                 <span class="mx-2">•</span>
@@ -597,11 +607,11 @@ async function loadFiles(subprojectId, path = '/') {
           
           <div class="flex items-center space-x-2">
             ${!isFolder ? `
-              <button onclick="event.stopPropagation(); downloadFile(${file.id}, '${file.name}')" class="text-gray-500 hover:text-orange p-2">
+              <button onclick="event.stopPropagation(); downloadFile(${file.id}, '${escapedFileName}')" class="text-gray-500 hover:text-orange p-2">
                 <i class="fas fa-download"></i>
               </button>
             ` : ''}
-            <button onclick="event.stopPropagation(); deleteFile(${file.id}, '${file.name}', ${isFolder})" class="text-gray-500 hover:text-red-500 p-2">
+            <button onclick="event.stopPropagation(); deleteFile(${file.id}, '${escapedFileName}', ${isFolder})" class="text-gray-500 hover:text-red-500 p-2">
               <i class="fas fa-trash"></i>
             </button>
           </div>
@@ -897,21 +907,44 @@ async function createFile() {
 
 // ==================== ファイル編集 ====================
 
+// サーバーからファイルを取得して表示
+async function loadAndShowFileEditor(fileId) {
+  try {
+    const response = await axios.get(`/api/files/${fileId}/download`);
+    const fileContent = response.data;
+    
+    // ファイル情報を取得するために別途リクエスト
+    const fileInfoResponse = await axios.get(`/api/subprojects/${currentSubproject}/files?path=${encodeURIComponent(currentPath)}`);
+    const file = fileInfoResponse.data.find(f => f.id === fileId);
+    
+    if (file) {
+      showFileEditor(fileId, file.name, fileContent, file.mime_type || 'text/plain');
+    }
+  } catch (error) {
+    console.error('ファイル読み込みエラー:', error);
+    showNotification('ファイルの読み込みに失敗しました', 'error');
+  }
+}
+
 function showFileEditor(fileId, fileName, fileContent, mimeType) {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+  
+  const escapedFileName = escapeHtml(fileName);
+  const escapedContent = escapeHtml(fileContent);
+  
   modal.innerHTML = `
     <div class="bg-white rounded-lg p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-      <h3 class="text-2xl font-bold mb-4">${fileName}</h3>
+      <h3 class="text-2xl font-bold mb-4">${escapedFileName}</h3>
       
       <div class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">内容</label>
-          <textarea id="edit-file-content" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange font-mono text-sm" rows="15">${fileContent}</textarea>
+          <textarea id="edit-file-content" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange font-mono text-sm" rows="15"></textarea>
         </div>
         
         <div class="flex space-x-3">
-          <button onclick="updateFile(${fileId}, '${fileName}')" class="flex-1 bg-orange text-white py-2 rounded-lg hover:bg-orange-dark transition">
+          <button onclick="updateFile(${fileId})" class="flex-1 bg-orange text-white py-2 rounded-lg hover:bg-orange-dark transition">
             保存
           </button>
           <button onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition">
@@ -923,10 +956,17 @@ function showFileEditor(fileId, fileName, fileContent, mimeType) {
   `;
   
   document.body.appendChild(modal);
+  
+  // コンテンツをtextContentで設定（HTMLエスケープ不要）
+  document.getElementById('edit-file-content').value = fileContent;
+  
+  // ファイル名をグローバルに保存
+  window.currentEditingFileName = fileName;
 }
 
-async function updateFile(fileId, fileName) {
+async function updateFile(fileId) {
   const content = document.getElementById('edit-file-content').value;
+  const fileName = window.currentEditingFileName;
   
   try {
     await axios.put(`/api/files/${fileId}`, {
