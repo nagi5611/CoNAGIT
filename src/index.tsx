@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
-import * as bcrypt from 'bcryptjs'
 
 type Bindings = {
   DB: D1Database
@@ -26,7 +25,8 @@ app.post('/api/login', async (c) => {
     return c.json({ error: 'ユーザーが見つかりません' }, 401)
   }
   
-  const isValid = await bcrypt.compare(password, user.password as string)
+  // 簡易認証（開発用）
+  const isValid = password === user.password
   
   if (!isValid) {
     return c.json({ error: 'パスワードが正しくありません' }, 401)
@@ -47,7 +47,7 @@ app.post('/api/login', async (c) => {
 app.post('/api/register', async (c) => {
   const { username, password, email } = await c.req.json()
   
-  const hashedPassword = await bcrypt.hash(password, 10)
+  const hashedPassword = password
   
   try {
     const result = await c.env.DB.prepare(

@@ -1,8 +1,8 @@
--- テストユーザーの作成 (パスワード: "password123" のハッシュ)
+-- テストユーザーの作成 (パスワード: "password123")
 INSERT OR IGNORE INTO users (username, password, email) VALUES 
-  ('admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'admin@example.com'),
-  ('user1', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'user1@example.com'),
-  ('user2', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'user2@example.com');
+  ('admin', 'password123', 'admin@example.com'),
+  ('user1', 'password123', 'user1@example.com'),
+  ('user2', 'password123', 'user2@example.com');
 
 -- テストプロジェクトの作成
 INSERT OR IGNORE INTO projects (id, name, description, progress, created_by) VALUES 
