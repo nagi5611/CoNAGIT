@@ -2,6 +2,7 @@
 let currentUser = null;
 let currentProject = null;
 let currentSubproject = null;
+let currentPath = '/'; // 現在のパス
 
 // ==================== ユーティリティ関数 ====================
 
@@ -19,6 +20,14 @@ function formatDate(dateString) {
   if (days < 7) return `${days}日前`;
   
   return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
 function showNotification(message, type = 'info') {
@@ -131,6 +140,7 @@ function renderHeader() {
 // ==================== プロジェクト一覧ページ ====================
 
 async function showProjectsPage() {
+  currentPath = '/';
   const app = document.getElementById('app');
   app.innerHTML = `
     ${renderHeader()}
@@ -257,6 +267,7 @@ async function createProject() {
 
 async function showProjectPage(projectId) {
   currentProject = projectId;
+  currentPath = '/';
   
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -469,23 +480,27 @@ async function downloadSubproject(subprojectId, subprojectName) {
     }
     
     // 簡易実装: 最初のファイルのみダウンロード
-    // 本来は全ファイルをZIPにまとめるべき
-    const firstFile = files[0];
-    const link = document.createElement('a');
-    link.href = `/api/files/${firstFile.id}/download`;
-    link.download = firstFile.name;
-    link.click();
-    
-    showNotification('ファイルをダウンロードしました', 'success');
+    const firstFile = files.find(f => f.file_type === 'file');
+    if (firstFile) {
+      const link = document.createElement('a');
+      link.href = `/api/files/${firstFile.id}/download`;
+      link.download = firstFile.name;
+      link.click();
+      
+      showNotification('ファイルをダウンロードしました', 'success');
+    } else {
+      showNotification('ダウンロード可能なファイルがありません', 'info');
+    }
   } catch (error) {
     showNotification('ダウンロードに失敗しました', 'error');
   }
 }
 
-// ==================== 子プロジェクト詳細ページ ====================
+// ==================== 子プロジェクト詳細ページ（ファイルブラウザ） ====================
 
 async function showSubprojectPage(subprojectId) {
   currentSubproject = subprojectId;
+  currentPath = '/';
   
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -496,10 +511,21 @@ async function showSubprojectPage(subprojectId) {
       </button>
       
       <div class="flex justify-between items-center mb-6">
-        <h2 id="subproject-title" class="text-2xl font-bold text-gray-900">読み込み中...</h2>
-        <button onclick="showCreateFileModal()" class="bg-orange text-white px-4 py-2 rounded-lg hover:bg-orange-dark transition">
-          <i class="fas fa-plus mr-2"></i>ファイル追加
-        </button>
+        <div>
+          <h2 id="subproject-title" class="text-2xl font-bold text-gray-900">読み込み中...</h2>
+          <div id="breadcrumb" class="text-sm text-gray-600 mt-2"></div>
+        </div>
+        <div class="flex space-x-2">
+          <button onclick="showCreateFolderModal()" class="bg-white border border-orange text-orange px-4 py-2 rounded-lg hover:bg-orange hover:text-white transition">
+            <i class="fas fa-folder-plus mr-2"></i>フォルダ作成
+          </button>
+          <button onclick="showUploadFileModal()" class="bg-orange text-white px-4 py-2 rounded-lg hover:bg-orange-dark transition">
+            <i class="fas fa-upload mr-2"></i>ファイルアップロード
+          </button>
+          <button onclick="showCreateFileModal()" class="bg-orange text-white px-4 py-2 rounded-lg hover:bg-orange-dark transition">
+            <i class="fas fa-plus mr-2"></i>ファイル作成
+          </button>
+        </div>
       </div>
       
       <div class="bg-white border border-gray-200 rounded-lg">
@@ -508,62 +534,311 @@ async function showSubprojectPage(subprojectId) {
     </div>
   `;
   
-  await loadFiles(subprojectId);
+  await loadFiles(subprojectId, currentPath);
 }
 
-async function loadFiles(subprojectId) {
+async function loadFiles(subprojectId, path = '/') {
+  currentPath = path;
+  
   try {
-    const response = await axios.get(`/api/subprojects/${subprojectId}/files`);
+    const response = await axios.get(`/api/subprojects/${subprojectId}/files?path=${encodeURIComponent(path)}`);
     const files = response.data;
+    
+    // パンくずリスト更新
+    updateBreadcrumb(path);
     
     const list = document.getElementById('files-list');
     
-    if (files.length === 0) {
+    let html = '';
+    
+    // 親ディレクトリへ戻るリンク
+    if (path !== '/') {
+      const parentPath = path.split('/').slice(0, -1).join('/') || '/';
+      html += `
+        <div class="flex items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-200" onclick="loadFiles(${subprojectId}, '${parentPath}')">
+          <i class="fas fa-level-up-alt text-gray-400 text-xl mr-4"></i>
+          <div class="flex-1">
+            <h4 class="font-semibold text-gray-900">..</h4>
+          </div>
+        </div>
+      `;
+    }
+    
+    if (files.length === 0 && path === '/') {
       list.innerHTML = `
         <div class="text-center py-12 text-gray-500">
           <i class="fas fa-file text-6xl mb-4 opacity-50"></i>
           <p>ファイルがありません</p>
-          <p class="text-sm mt-2">ファイルを追加してください</p>
+          <p class="text-sm mt-2">ファイルまたはフォルダを追加してください</p>
         </div>
       `;
       return;
     }
     
-    list.innerHTML = files.map((file, index) => `
-      <div class="flex items-center justify-between p-4 hover:bg-gray-50 ${index > 0 ? 'border-t border-gray-200' : ''}">
-        <div class="flex items-center flex-1 cursor-pointer" onclick="showFileEditor(${file.id}, '${file.name}', \`${file.content || ''}\`)">
-          <i class="fas fa-file-alt text-gray-400 text-xl mr-4"></i>
-          <div class="flex-1">
-            <h4 class="font-semibold text-gray-900">${file.name}</h4>
-            <p class="text-sm text-gray-600">
-              <i class="fas fa-user mr-1"></i>${file.updated_by_name}
-              <span class="mx-2">•</span>
-              <i class="fas fa-clock mr-1"></i>${formatDate(file.updated_at)}
-            </p>
+    html += files.map((file, index) => {
+      const isFolder = file.file_type === 'folder';
+      const icon = isFolder ? 'fa-folder text-yellow-500' : 'fa-file-alt text-gray-400';
+      const nextPath = isFolder ? `${path === '/' ? '' : path}/${file.name}` : null;
+      
+      return `
+        <div class="flex items-center justify-between p-4 hover:bg-gray-50 ${index > 0 || path !== '/' ? 'border-t border-gray-200' : ''}">
+          <div class="flex items-center flex-1 ${isFolder ? 'cursor-pointer' : 'cursor-pointer'}" onclick="${isFolder ? `loadFiles(${subprojectId}, '${nextPath}')` : `showFileEditor(${file.id}, '${file.name}', \`${(file.content || '').replace(/`/g, '\\`')}\`, '${file.mime_type || 'text/plain'}')`}">
+            <i class="fas ${icon} text-xl mr-4"></i>
+            <div class="flex-1">
+              <h4 class="font-semibold text-gray-900">${file.name}</h4>
+              <p class="text-sm text-gray-600">
+                <i class="fas fa-user mr-1"></i>${file.updated_by_name}
+                <span class="mx-2">•</span>
+                <i class="fas fa-clock mr-1"></i>${formatDate(file.updated_at)}
+                ${!isFolder && file.file_size ? `<span class="mx-2">•</span>${formatFileSize(file.file_size)}` : ''}
+              </p>
+            </div>
+          </div>
+          
+          <div class="flex items-center space-x-2">
+            ${!isFolder ? `
+              <button onclick="event.stopPropagation(); downloadFile(${file.id}, '${file.name}')" class="text-gray-500 hover:text-orange p-2">
+                <i class="fas fa-download"></i>
+              </button>
+            ` : ''}
+            <button onclick="event.stopPropagation(); deleteFile(${file.id}, '${file.name}', ${isFolder})" class="text-gray-500 hover:text-red-500 p-2">
+              <i class="fas fa-trash"></i>
+            </button>
           </div>
         </div>
-        
-        <div class="flex items-center space-x-2">
-          <button onclick="downloadFile(${file.id}, '${file.name}')" class="text-gray-500 hover:text-orange p-2">
-            <i class="fas fa-download"></i>
-          </button>
-          <button onclick="deleteFile(${file.id}, '${file.name}')" class="text-gray-500 hover:text-red-500 p-2">
-            <i class="fas fa-trash"></i>
-          </button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
+    
+    list.innerHTML = html;
   } catch (error) {
     console.error('ファイル取得エラー:', error);
   }
 }
+
+function updateBreadcrumb(path) {
+  const breadcrumb = document.getElementById('breadcrumb');
+  const parts = path.split('/').filter(p => p);
+  
+  let html = '<i class="fas fa-folder-open mr-2"></i>';
+  html += `<span class="cursor-pointer hover:text-orange" onclick="loadFiles(${currentSubproject}, '/')">ルート</span>`;
+  
+  let currentPath = '';
+  parts.forEach((part, index) => {
+    currentPath += '/' + part;
+    html += ' / ';
+    if (index === parts.length - 1) {
+      html += `<span class="font-semibold">${part}</span>`;
+    } else {
+      html += `<span class="cursor-pointer hover:text-orange" onclick="loadFiles(${currentSubproject}, '${currentPath}')">${part}</span>`;
+    }
+  });
+  
+  breadcrumb.innerHTML = html;
+}
+
+// ==================== フォルダ作成 ====================
+
+function showCreateFolderModal() {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="bg-white rounded-lg p-8 max-w-md w-full">
+      <h3 class="text-2xl font-bold mb-4">フォルダ作成</h3>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">フォルダ名</label>
+          <input id="folder-name" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange" placeholder="新しいフォルダ" />
+        </div>
+        
+        <div class="flex space-x-3">
+          <button onclick="createFolder()" class="flex-1 bg-orange text-white py-2 rounded-lg hover:bg-orange-dark transition">
+            作成
+          </button>
+          <button onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition">
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+async function createFolder() {
+  const name = document.getElementById('folder-name').value;
+  
+  if (!name) {
+    showNotification('フォルダ名を入力してください', 'error');
+    return;
+  }
+  
+  try {
+    await axios.post(`/api/subprojects/${currentSubproject}/folders`, {
+      name,
+      path: currentPath,
+      userId: currentUser.id,
+      projectId: currentProject
+    });
+    
+    document.querySelector('.fixed').remove();
+    showNotification('フォルダを作成しました', 'success');
+    loadFiles(currentSubproject, currentPath);
+    loadTimeline(currentProject);
+  } catch (error) {
+    showNotification('フォルダの作成に失敗しました', 'error');
+  }
+}
+
+// ==================== ファイルアップロード ====================
+
+function showUploadFileModal() {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="bg-white rounded-lg p-8 max-w-2xl w-full">
+      <h3 class="text-2xl font-bold mb-4">ファイルアップロード</h3>
+      
+      <div class="space-y-4">
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+          <input type="file" id="file-upload" multiple webkitdirectory="" directory="" class="hidden" onchange="handleFileSelect(event)" />
+          <input type="file" id="file-upload-normal" multiple class="hidden" onchange="handleFileSelect(event)" />
+          
+          <i class="fas fa-cloud-upload-alt text-6xl text-gray-400 mb-4"></i>
+          <p class="text-gray-600 mb-4">ファイルをアップロード</p>
+          
+          <div class="flex justify-center space-x-3">
+            <button onclick="document.getElementById('file-upload-normal').click()" class="bg-orange text-white px-4 py-2 rounded-lg hover:bg-orange-dark transition">
+              <i class="fas fa-file mr-2"></i>ファイルを選択
+            </button>
+            <button onclick="document.getElementById('file-upload').click()" class="bg-white border border-orange text-orange px-4 py-2 rounded-lg hover:bg-orange hover:text-white transition">
+              <i class="fas fa-folder mr-2"></i>フォルダを選択
+            </button>
+          </div>
+        </div>
+        
+        <div id="upload-preview" class="space-y-2 max-h-60 overflow-y-auto"></div>
+        
+        <div class="flex space-x-3">
+          <button id="upload-btn" onclick="uploadFiles()" class="flex-1 bg-orange text-white py-2 rounded-lg hover:bg-orange-dark transition" disabled>
+            アップロード
+          </button>
+          <button onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition">
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+let selectedFiles = [];
+
+function handleFileSelect(event) {
+  const files = Array.from(event.target.files);
+  selectedFiles = files;
+  
+  const preview = document.getElementById('upload-preview');
+  const uploadBtn = document.getElementById('upload-btn');
+  
+  if (files.length === 0) {
+    preview.innerHTML = '';
+    uploadBtn.disabled = true;
+    return;
+  }
+  
+  uploadBtn.disabled = false;
+  
+  preview.innerHTML = `
+    <div class="text-sm text-gray-600 mb-2">
+      <i class="fas fa-info-circle mr-2"></i>${files.length}個のファイルが選択されています
+    </div>
+    ${files.slice(0, 10).map(file => `
+      <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+        <span class="text-sm truncate flex-1">${file.webkitRelativePath || file.name}</span>
+        <span class="text-xs text-gray-500 ml-2">${formatFileSize(file.size)}</span>
+      </div>
+    `).join('')}
+    ${files.length > 10 ? `<div class="text-sm text-gray-500 text-center">他 ${files.length - 10} 個のファイル...</div>` : ''}
+  `;
+}
+
+async function uploadFiles() {
+  if (selectedFiles.length === 0) {
+    showNotification('ファイルを選択してください', 'error');
+    return;
+  }
+  
+  const uploadBtn = document.getElementById('upload-btn');
+  uploadBtn.disabled = true;
+  uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>アップロード中...';
+  
+  try {
+    const filesData = [];
+    
+    for (const file of selectedFiles) {
+      const content = await readFileAsText(file);
+      const relativePath = file.webkitRelativePath || file.name;
+      const pathParts = relativePath.split('/');
+      const fileName = pathParts.pop();
+      const filePath = currentPath === '/' ? 
+        (pathParts.length > 0 ? '/' + pathParts.join('/') : '/') :
+        (pathParts.length > 0 ? currentPath + '/' + pathParts.join('/') : currentPath);
+      
+      filesData.push({
+        name: fileName,
+        content: content,
+        path: filePath,
+        mimeType: file.type || 'text/plain',
+        fileSize: file.size
+      });
+    }
+    
+    await axios.post(`/api/subprojects/${currentSubproject}/files/batch`, {
+      files: filesData,
+      userId: currentUser.id,
+      projectId: currentProject
+    });
+    
+    document.querySelector('.fixed').remove();
+    showNotification(`${filesData.length}個のファイルをアップロードしました`, 'success');
+    loadFiles(currentSubproject, currentPath);
+    loadTimeline(currentProject);
+  } catch (error) {
+    console.error('アップロードエラー:', error);
+    showNotification('ファイルのアップロードに失敗しました', 'error');
+    uploadBtn.disabled = false;
+    uploadBtn.innerHTML = 'アップロード';
+  }
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = reject;
+    
+    // テキストファイルとして読み取り
+    if (file.type.startsWith('text/') || file.type === '' || file.name.match(/\.(txt|js|json|html|css|md|py|java|cpp|c|h)$/i)) {
+      reader.readAsText(file);
+    } else {
+      // バイナリファイルの場合はBase64エンコード
+      reader.readAsDataURL(file);
+    }
+  });
+}
+
+// ==================== ファイル作成 ====================
 
 function showCreateFileModal() {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
   modal.innerHTML = `
     <div class="bg-white rounded-lg p-8 max-w-2xl w-full">
-      <h3 class="text-2xl font-bold mb-4">ファイル追加</h3>
+      <h3 class="text-2xl font-bold mb-4">ファイル作成</h3>
       
       <div class="space-y-4">
         <div>
@@ -578,7 +853,7 @@ function showCreateFileModal() {
         
         <div class="flex space-x-3">
           <button onclick="createFile()" class="flex-1 bg-orange text-white py-2 rounded-lg hover:bg-orange-dark transition">
-            追加
+            作成
           </button>
           <button onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition">
             キャンセル
@@ -604,20 +879,25 @@ async function createFile() {
     await axios.post(`/api/subprojects/${currentSubproject}/files`, {
       name,
       content,
+      path: currentPath,
       userId: currentUser.id,
-      projectId: currentProject
+      projectId: currentProject,
+      mimeType: 'text/plain',
+      fileSize: new Blob([content]).size
     });
     
     document.querySelector('.fixed').remove();
-    showNotification('ファイルを追加しました', 'success');
-    loadFiles(currentSubproject);
+    showNotification('ファイルを作成しました', 'success');
+    loadFiles(currentSubproject, currentPath);
     loadTimeline(currentProject);
   } catch (error) {
-    showNotification('ファイルの追加に失敗しました', 'error');
+    showNotification('ファイルの作成に失敗しました', 'error');
   }
 }
 
-function showFileEditor(fileId, fileName, fileContent) {
+// ==================== ファイル編集 ====================
+
+function showFileEditor(fileId, fileName, fileContent, mimeType) {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
   modal.innerHTML = `
@@ -658,7 +938,7 @@ async function updateFile(fileId, fileName) {
     
     document.querySelector('.fixed').remove();
     showNotification('ファイルを更新しました', 'success');
-    loadFiles(currentSubproject);
+    loadFiles(currentSubproject, currentPath);
     loadTimeline(currentProject);
   } catch (error) {
     showNotification('ファイルの更新に失敗しました', 'error');
@@ -674,8 +954,9 @@ async function downloadFile(fileId, fileName) {
   showNotification('ファイルをダウンロードしました', 'success');
 }
 
-async function deleteFile(fileId, fileName) {
-  if (!confirm(`${fileName} を削除しますか?`)) {
+async function deleteFile(fileId, fileName, isFolder) {
+  const itemType = isFolder ? 'フォルダ' : 'ファイル';
+  if (!confirm(`${fileName} ${itemType}を削除しますか?`)) {
     return;
   }
   
@@ -688,11 +969,11 @@ async function deleteFile(fileId, fileName) {
       }
     });
     
-    showNotification('ファイルを削除しました', 'success');
-    loadFiles(currentSubproject);
+    showNotification(`${itemType}を削除しました`, 'success');
+    loadFiles(currentSubproject, currentPath);
     loadTimeline(currentProject);
   } catch (error) {
-    showNotification('ファイルの削除に失敗しました', 'error');
+    showNotification(`${itemType}の削除に失敗しました`, 'error');
   }
 }
 

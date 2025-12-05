@@ -211,29 +211,49 @@ app.delete('/api/subprojects/:id', async (c) => {
 
 // ==================== ファイル API ====================
 
-// ファイル一覧取得
+// ファイル一覧取得（階層構造対応）
 app.get('/api/subprojects/:id/files', async (c) => {
   const subprojectId = c.req.param('id')
+  const path = c.req.query('path') || '/'
   
   const files = await c.env.DB.prepare(`
     SELECT f.*, u.username as updated_by_name
     FROM files f
     JOIN users u ON f.updated_by = u.id
-    WHERE f.subproject_id = ?
-    ORDER BY f.updated_at DESC
-  `).bind(subprojectId).all()
+    WHERE f.subproject_id = ? AND f.path = ?
+    ORDER BY f.file_type DESC, f.name ASC
+  `).bind(subprojectId, path).all()
   
   return c.json(files.results)
 })
 
-// ファイル作成
-app.post('/api/subprojects/:id/files', async (c) => {
+// フォルダ作成
+app.post('/api/subprojects/:id/folders', async (c) => {
   const subprojectId = c.req.param('id')
-  const { name, content, userId, projectId } = await c.req.json()
+  const { name, path, userId, projectId } = await c.req.json()
   
   const result = await c.env.DB.prepare(
-    'INSERT INTO files (subproject_id, name, content, updated_by) VALUES (?, ?, ?, ?)'
-  ).bind(subprojectId, name, content, userId).run()
+    'INSERT INTO files (subproject_id, name, path, file_type, updated_by) VALUES (?, ?, ?, ?, ?)'
+  ).bind(subprojectId, name, path, 'folder', userId).run()
+  
+  const folderId = result.meta.last_row_id
+  
+  // タイムラインに記録
+  await c.env.DB.prepare(
+    'INSERT INTO timeline (project_id, user_id, file_id, action, description) VALUES (?, ?, ?, ?, ?)'
+  ).bind(projectId, userId, folderId, 'created', `フォルダ ${name} を作成しました`).run()
+  
+  return c.json({ success: true, folderId })
+})
+
+// ファイル作成（単一ファイル）
+app.post('/api/subprojects/:id/files', async (c) => {
+  const subprojectId = c.req.param('id')
+  const { name, content, path, userId, projectId, mimeType, fileSize } = await c.req.json()
+  
+  const result = await c.env.DB.prepare(
+    'INSERT INTO files (subproject_id, name, content, path, file_type, mime_type, file_size, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(subprojectId, name, content, path || '/', 'file', mimeType, fileSize || 0, userId).run()
   
   const fileId = result.meta.last_row_id
   
@@ -243,6 +263,29 @@ app.post('/api/subprojects/:id/files', async (c) => {
   ).bind(projectId, userId, fileId, 'created', `${name}を作成しました`).run()
   
   return c.json({ success: true, fileId })
+})
+
+// 複数ファイル一括アップロード
+app.post('/api/subprojects/:id/files/batch', async (c) => {
+  const subprojectId = c.req.param('id')
+  const { files, userId, projectId } = await c.req.json()
+  
+  const fileIds = []
+  
+  for (const file of files) {
+    const result = await c.env.DB.prepare(
+      'INSERT INTO files (subproject_id, name, content, path, file_type, mime_type, file_size, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(subprojectId, file.name, file.content, file.path || '/', 'file', file.mimeType, file.fileSize || 0, userId).run()
+    
+    fileIds.push(result.meta.last_row_id)
+  }
+  
+  // タイムラインに記録
+  await c.env.DB.prepare(
+    'INSERT INTO timeline (project_id, user_id, file_id, action, description) VALUES (?, ?, ?, ?, ?)'
+  ).bind(projectId, userId, null, 'created', `${files.length}個のファイルをアップロードしました`).run()
+  
+  return c.json({ success: true, fileIds })
 })
 
 // ファイル更新
@@ -291,9 +334,14 @@ app.get('/api/files/:id/download', async (c) => {
     return c.json({ error: 'ファイルが見つかりません' }, 404)
   }
   
+  // フォルダの場合はエラー
+  if (file.file_type === 'folder') {
+    return c.json({ error: 'フォルダはダウンロードできません' }, 400)
+  }
+  
   return new Response(file.content as string, {
     headers: {
-      'Content-Type': 'text/plain',
+      'Content-Type': file.mime_type as string || 'text/plain',
       'Content-Disposition': `attachment; filename="${file.name}"`
     }
   })
