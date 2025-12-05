@@ -13,7 +13,14 @@ function escapeHtml(text) {
 }
 
 function formatDate(dateString) {
-  const date = new Date(dateString);
+  // データベースから返される日時はUTCなので、明示的にUTCとして扱う
+  // "2025-12-05 04:12:46" -> "2025-12-05T04:12:46Z"
+  let dateStr = dateString;
+  if (dateStr && !dateStr.includes('T') && !dateStr.includes('Z')) {
+    dateStr = dateStr.replace(' ', 'T') + 'Z';
+  }
+  
+  const date = new Date(dateStr);
   const now = new Date();
   const diff = now - date;
   const minutes = Math.floor(diff / 60000);
@@ -25,7 +32,12 @@ function formatDate(dateString) {
   if (hours < 24) return `${hours}時間前`;
   if (days < 7) return `${days}日前`;
   
-  return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('ja-JP', { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric',
+    timeZone: 'Asia/Tokyo'
+  });
 }
 
 function formatFileSize(bytes) {
