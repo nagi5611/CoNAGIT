@@ -1,1 +1,113 @@
-h1 { font-family: Arial, Helvetica, sans-serif; }
+/* Team Project Manager - Custom Styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  background-color: #ffffff;
+  color: #000000;
+}
+
+/* オレンジアクセントカラー */
+.border-orange {
+  border-color: #ff6b35 !important;
+}
+
+.text-orange {
+  color: #ff6b35 !important;
+}
+
+.bg-orange {
+  background-color: #ff6b35 !important;
+}
+
+.hover\:bg-orange-dark:hover {
+  background-color: #e5581f !important;
+}
+
+/* プログレスバーアニメーション */
+.progress-bar {
+  transition: width 0.3s ease;
+}
+
+/* スクロールバーのスタイル */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ff6b35;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e5581f;
+}
+
+/* コードエディタ風のテキストエリア */
+textarea.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  line-height: 1.5;
+}
+
+/* カード要素のホバーエフェクト */
+.hover\:border-orange:hover {
+  border-color: #ff6b35 !important;
+  box-shadow: 0 4px 6px -1px rgba(255, 107, 53, 0.1), 0 2px 4px -1px rgba(255, 107, 53, 0.06);
+}
+
+/* モーダルのアニメーション */
+.fixed {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ボタンのホバーエフェクト */
+button {
+  transition: all 0.2s ease;
+}
+
+/* インプットフォーカス時のエフェクト */
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: #ff6b35;
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+}
+
+/* タイムラインアイテムのスタイル */
+.timeline-item {
+  position: relative;
+  padding-left: 2rem;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  top: 2rem;
+  bottom: -1rem;
+  width: 2px;
+  background-color: #e5e7eb;
+}
+
+.timeline-item:last-child::before {
+  display: none;
+}
