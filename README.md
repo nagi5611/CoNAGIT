@@ -1,7 +1,7 @@
-# Team Project Manager
+# CoNAGIT
 
 ## プロジェクト概要
-- **名前**: Team Project Manager
+- **名前**: CoNAGIT
 - **目標**: チームのためのプロジェクト管理ツール（GitHub風のインターフェース）
 - **特徴**: 
   - ログイン認証システム
@@ -30,7 +30,10 @@
 ### ストレージサービス
 - **Cloudflare D1**: SQLiteベースの分散データベース
   - ローカル開発: `.wrangler/state/v3/d1`
-  - 本番環境: Cloudflare D1 (未デプロイ)
+  - 本番環境: Cloudflare D1
+- **AWS S3**: ファイルストレージ（20MB以上のファイルは直接アップロード）
+  - 大きなファイルはPresigned URLを使用してフロントエンドから直接アップロード
+  - 後方互換性のため、R2もサポート
 
 ### データフロー
 1. ユーザーログイン → セッション管理（localStorage）
@@ -241,9 +244,56 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM users
    - 本番D1データベースの作成
    - カスタムドメインの設定
 
+## AWS S3設定
+
+大きなファイル（20MB以上）はAWS S3に直接アップロードされます。
+
+### 1. AWS S3バケットの作成
+1. AWSコンソールでS3バケットを作成
+2. バケット名をメモ（例: `webapp-files`）
+3. リージョンを選択（推奨: `ap-northeast-1`）
+
+### 2. IAMユーザーの作成と権限設定
+1. IAMで新しいユーザーを作成
+2. 以下のポリシーをアタッチ：
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::your-bucket-name/*"
+    }
+  ]
+}
+```
+3. アクセスキーIDとシークレットアクセスキーを取得
+
+### 3. Cloudflare Pages環境変数の設定
+Cloudflare Pagesのダッシュボードで以下の環境変数を設定：
+
+- `AWS_ACCESS_KEY_ID`: IAMユーザーのアクセスキーID
+- `AWS_SECRET_ACCESS_KEY`: IAMユーザーのシークレットアクセスキー
+- `AWS_REGION`: S3バケットのリージョン（例: `ap-northeast-1`）
+- `S3_BUCKET`: S3バケット名（例: `webapp-files`）
+
+### 4. ローカル開発環境の設定
+`.dev.vars`ファイルを作成（`.gitignore`に追加済み）：
+```
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_REGION=ap-northeast-1
+S3_BUCKET=your-bucket-name
+```
+
 ## デプロイメント
 - **プラットフォーム**: Cloudflare Pages
-- **ステータス**: ✅ ローカル開発完了 / ❌ 本番未デプロイ
+- **ステータス**: ✅ ローカル開発完了 / ✅ 本番デプロイ済み
 - **最終更新**: 2025-12-05
 
 ## ライセンス

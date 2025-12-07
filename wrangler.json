@@ -1,15 +1,21 @@
 {
-  "name": "webapp",
-  "compatibility_date": "2025-12-05",
-  "pages_build_output_dir": "./dist",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "webapp-production",
-      "database_id": "00000000-0000-0000-0000-000000000000"
-    }
-  ]
+	"name": "webapp",
+	"compatibility_date": "2025-12-05",
+	"pages_build_output_dir": "./dist",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "webapp-production",
+			"database_id": "53c1954e-a9ac-484d-a4f3-2067a66c196c"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "R2",
+			"bucket_name": "webapp-files"
+		}
+	]
 }
