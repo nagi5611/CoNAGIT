@@ -9,7 +9,7 @@
     "deploy": "npm run build && wrangler pages deploy dist",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:local": "wrangler d1 migrations apply webapp-production --local",
-    "db:migrate:prod": "wrangler d1 migrations apply webapp-production",
+    "db:migrate:prod": "wrangler d1 migrations apply webapp-production --remote",
     "db:seed": "wrangler d1 execute webapp-production --local --file=./seed.sql",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
     "clean-port": "fuser -k 3000/tcp 2>/dev/null || true"
@@ -17,8 +17,11 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.946.0",
     "@aws-sdk/s3-request-presigner": "^3.946.0",
+    "@xmldom/xmldom": "^0.8.10",
     "bcryptjs": "^2.4.3",
-    "hono": "^4.10.7"
+    "hono": "^4.10.7",
+    "jose": "^6.1.3",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@hono/vite-build": "^1.2.0",

@@ -1,0 +1,14 @@
+-- Member projects table for per-user assigned projects
+CREATE TABLE IF NOT EXISTS member_projects (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('in_progress', 'pending')),
+  display_order INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_projects_user_id ON member_projects(user_id);
+

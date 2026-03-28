@@ -1,0 +1,154 @@
+-- 0006 UUID移行後に、外部キー参照先が users_old / projects_old / subprojects_old / files_old を指したままになる問題の修正
+-- D1 remote execute/import では BEGIN/COMMIT が拒否されるため使用しない
+
+PRAGMA foreign_keys=off;
+
+-- projects
+CREATE TABLE projects_fixed (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  progress INTEGER DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+INSERT INTO projects_fixed (id, name, description, progress, created_by, created_at, updated_at)
+SELECT id, name, description, progress, created_by, created_at, updated_at
+FROM projects;
+DROP TABLE projects;
+ALTER TABLE projects_fixed RENAME TO projects;
+
+-- project_members
+CREATE TABLE project_members_fixed (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT DEFAULT 'member',
+  added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE(project_id, user_id)
+);
+INSERT INTO project_members_fixed (id, project_id, user_id, role, added_at)
+SELECT id, project_id, user_id, role, added_at
+FROM project_members;
+DROP TABLE project_members;
+ALTER TABLE project_members_fixed RENAME TO project_members;
+
+-- subprojects
+CREATE TABLE subprojects_fixed (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+INSERT INTO subprojects_fixed (id, project_id, name, description, created_at)
+SELECT id, project_id, name, description, created_at
+FROM subprojects;
+DROP TABLE subprojects;
+ALTER TABLE subprojects_fixed RENAME TO subprojects;
+
+-- files
+CREATE TABLE files_fixed (
+  id TEXT PRIMARY KEY,
+  subproject_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  content TEXT,
+  updated_by TEXT NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  path TEXT DEFAULT '/',
+  file_type TEXT DEFAULT 'file',
+  file_size INTEGER DEFAULT 0,
+  mime_type TEXT,
+  r2_key TEXT,
+  FOREIGN KEY (subproject_id) REFERENCES subprojects(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by) REFERENCES users(id)
+);
+INSERT INTO files_fixed (id, subproject_id, name, content, updated_by, updated_at, path, file_type, file_size, mime_type, r2_key)
+SELECT id, subproject_id, name, content, updated_by, updated_at, path, file_type, file_size, mime_type, r2_key
+FROM files;
+DROP TABLE files;
+ALTER TABLE files_fixed RENAME TO files;
+
+-- file_versions
+CREATE TABLE file_versions_fixed (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  file_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  s3_key TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  mime_type TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT NOT NULL,
+  FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id),
+  UNIQUE(file_id, version)
+);
+INSERT INTO file_versions_fixed (id, file_id, version, s3_key, file_size, mime_type, created_at, created_by)
+SELECT id, file_id, version, s3_key, file_size, mime_type, created_at, created_by
+FROM file_versions;
+DROP TABLE file_versions;
+ALTER TABLE file_versions_fixed RENAME TO file_versions;
+
+-- api_keys
+CREATE TABLE api_keys_fixed (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  subproject_id TEXT NOT NULL,
+  api_key_hash TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (subproject_id) REFERENCES subprojects(id) ON DELETE CASCADE,
+  UNIQUE(user_id, subproject_id)
+);
+INSERT INTO api_keys_fixed (id, user_id, subproject_id, api_key_hash, created_at, last_used_at)
+SELECT id, user_id, subproject_id, api_key_hash, created_at, last_used_at
+FROM api_keys;
+DROP TABLE api_keys;
+ALTER TABLE api_keys_fixed RENAME TO api_keys;
+
+-- timeline
+CREATE TABLE timeline_fixed (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  file_id TEXT,
+  action TEXT NOT NULL,
+  description TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE SET NULL
+);
+INSERT INTO timeline_fixed (id, project_id, user_id, file_id, action, description, created_at)
+SELECT id, project_id, user_id, file_id, action, description, created_at
+FROM timeline;
+DROP TABLE timeline;
+ALTER TABLE timeline_fixed RENAME TO timeline;
+
+-- indexes (recreate)
+CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by);
+CREATE INDEX IF NOT EXISTS idx_project_members_project ON project_members(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_subprojects_project ON subprojects(project_id);
+CREATE INDEX IF NOT EXISTS idx_files_subproject ON files(subproject_id);
+CREATE INDEX IF NOT EXISTS idx_files_updated_by ON files(updated_by);
+CREATE INDEX IF NOT EXISTS idx_files_path ON files(subproject_id, path);
+CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type);
+CREATE INDEX IF NOT EXISTS idx_files_r2_key ON files(r2_key);
+CREATE INDEX IF NOT EXISTS idx_timeline_project ON timeline(project_id);
+CREATE INDEX IF NOT EXISTS idx_timeline_created_at ON timeline(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_file_versions_file_id ON file_versions(file_id);
+CREATE INDEX IF NOT EXISTS idx_file_versions_created_at ON file_versions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_subproject_id ON api_keys(subproject_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(api_key_hash);
+
+PRAGMA foreign_keys=on;
+
+

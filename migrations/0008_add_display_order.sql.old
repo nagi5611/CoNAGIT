@@ -1,0 +1,20 @@
+-- Migration: Add display_order columns for drag and drop reordering
+-- Date: 2026-01-03
+
+-- Add display_order column to projects table
+ALTER TABLE projects ADD COLUMN display_order INTEGER DEFAULT 0;
+
+-- Add display_order column to subprojects table
+ALTER TABLE subprojects ADD COLUMN display_order INTEGER DEFAULT 0;
+
+-- Initialize display_order for existing projects (ordered by name)
+UPDATE projects SET display_order = (
+  SELECT COUNT(*) FROM projects p2 WHERE p2.name <= projects.name
+);
+
+-- Initialize display_order for existing subprojects (ordered by created_at)
+UPDATE subprojects SET display_order = (
+  SELECT COUNT(*) FROM subprojects s2 
+  WHERE s2.project_id = subprojects.project_id 
+  AND s2.created_at <= subprojects.created_at
+);

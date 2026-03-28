@@ -74,6 +74,7 @@
 - **階層構造管理（フォルダ/ファイル）**
 - **パンくずリスト表示**
 - **フォルダ作成機能**
+- **APIキー機能（CLIツール用）**
 
 ✅ **タイムライン**
 - 編集履歴表示（誰が・いつ・何を）
@@ -132,6 +133,11 @@
 
 ### タイムライン
 - `GET /api/projects/:id/timeline` - タイムライン取得
+
+### APIキー
+- `POST /api/subprojects/:id/api-keys` - APIキー生成
+- `GET /api/subprojects/:id/api-keys` - APIキー存在確認
+- `POST /api/subprojects/:id/upload-zip` - ZIPファイルアップロード（APIキー認証）
 
 ### ユーザー
 - `GET /api/users/search?q=query` - ユーザー検索
@@ -290,6 +296,44 @@ AWS_SECRET_ACCESS_KEY=your-secret-access-key
 AWS_REGION=ap-northeast-1
 S3_BUCKET=your-bucket-name
 ```
+
+## Discord 通知（オプション）
+
+ファイルの作成・編集・削除・アップロード時に Discord へ通知を送れます。**Webhook** または **Bot** のいずれかを設定してください。
+
+- **Webhook**: チャンネルに「Webhook」を作成し、URL を設定するだけ。
+- **Bot**: Discord Developer Portal でアプリケーションを作成し、Bot Token と送信先チャンネルIDを設定。
+
+### 環境変数
+
+| 変数名 | 説明 | 必須 |
+|--------|------|------|
+| `DISCORD_WEBHOOK_URL` | Webhook の URL（設定時は Webhook で送信） | Webhook 利用時 |
+| `DISCORD_BOT_TOKEN` | Bot のトークン | Bot 利用時 |
+| `DISCORD_APPLICATION_ID` | アプリケーション ID（将来のスラッシュコマンド等用） | 任意 |
+| `DISCORD_CHANNEL_ID` | 通知を送るチャンネル ID | Bot 利用時 |
+
+- **ローカル**: `.env` に上記を記述。Wrangler で動かす場合は `.dev.vars` に同じキーで値を書く（Wrangler は `.dev.vars` を Bindings に渡す）。
+- **本番**: `wrangler secret put DISCORD_WEBHOOK_URL` や `wrangler secret put DISCORD_BOT_TOKEN` で設定するか、Cloudflare Dashboard の環境変数で設定。秘密情報は `wrangler.json` に書かないこと。
+
+### 通知が来ない場合の確認
+
+1. **再デプロイ**  
+   ダッシュボードで変数を追加・変更したあと、**再デプロイ**（Deployments で「Retry deployment」または新規 push でデプロイ）しないと反映されないことがあります。
+
+2. **環境の一致**  
+   Cloudflare Pages の「Environment variables」で、利用している環境（**Production** か **Preview**）に `DISCORD_WEBHOOK_URL` が設定されているか確認してください。
+
+3. **変数名の一致**  
+   名前は `DISCORD_WEBHOOK_URL` のみです。前後に空白や別名（例: `DISCORD_WEBHOOK`）にしていないか確認してください。
+
+4. **ログでエラー確認**  
+   Cloudflare Dashboard → **Workers & Pages** → 対象プロジェクト → **Logs**（Real-time Logs または Analytics の Logs）で、ファイル操作時に次のログが出ていないか確認します。
+   - `[notifyDiscord] Webhook failed:` … fetch 失敗（ネットワーク・URL 誤りなど）
+   - `[notifyDiscord] Webhook HTTP error:` … Discord API が 4xx/5xx を返した場合（ステータスと本文で原因を判断）
+
+5. **Webhook URL**  
+   URL は `https://discord.com/api/webhooks/{id}/{token}` 形式です。チャンネル設定で Webhook を再作成し、表示された URL をそのままコピーして設定し直してみてください。
 
 ## デプロイメント
 - **プラットフォーム**: Cloudflare Pages

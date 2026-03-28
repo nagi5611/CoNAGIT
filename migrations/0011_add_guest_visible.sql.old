@@ -1,0 +1,5 @@
+-- プロジェクトにゲスト公開可否フラグを追加
+ALTER TABLE projects
+  ADD COLUMN guest_visible INTEGER DEFAULT 0;
+
+-- 既存行はデフォルトで非公開のまま（0）

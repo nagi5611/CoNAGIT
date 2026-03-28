@@ -1,0 +1,2 @@
+-- Add subproject_id to member_projects to link with actual subprojects
+ALTER TABLE member_projects ADD COLUMN subproject_id TEXT REFERENCES subprojects(id) ON DELETE SET NULL;

@@ -1,0 +1,225 @@
+-- UUID移行マイグレーション
+-- 既存の主キー（INTEGER または すでに TEXT/UUID）を TEXT/UUID に統一する
+-- 関連テーブルを更新し、すべての外部キー関係を維持する
+
+PRAGMA foreign_keys=off;
+
+-- マッピングテーブル作成 (old_id は TEXT 型にして、INTEGER と UUID 両方に対応させる)
+CREATE TABLE user_id_map(old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL UNIQUE);
+INSERT INTO user_id_map(old_id, new_id)
+SELECT CAST(id AS TEXT),
+  CASE 
+    WHEN typeof(id) = 'text' AND id LIKE '%-%-%-%-%' THEN id 
+    ELSE lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || '4' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6)))
+  END
+FROM users;
+
+CREATE TABLE project_id_map(old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL UNIQUE);
+INSERT INTO project_id_map(old_id, new_id)
+SELECT CAST(id AS TEXT),
+  CASE 
+    WHEN typeof(id) = 'text' AND id LIKE '%-%-%-%-%' THEN id 
+    ELSE lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || '4' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6)))
+  END
+FROM projects;
+
+CREATE TABLE subproject_id_map(old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL UNIQUE);
+INSERT INTO subproject_id_map(old_id, new_id)
+SELECT CAST(id AS TEXT),
+  CASE 
+    WHEN typeof(id) = 'text' AND id LIKE '%-%-%-%-%' THEN id 
+    ELSE lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || '4' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6)))
+  END
+FROM subprojects;
+
+CREATE TABLE file_id_map(old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL UNIQUE);
+INSERT INTO file_id_map(old_id, new_id)
+SELECT CAST(id AS TEXT),
+  CASE 
+    WHEN typeof(id) = 'text' AND id LIKE '%-%-%-%-%' THEN id 
+    ELSE lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || '4' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6)))
+  END
+FROM files;
+
+-- users
+CREATE TABLE users_new (
+  id TEXT PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  email TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO users_new (id, username, password, email, created_at)
+SELECT m.new_id, u.username, u.password, u.email, u.created_at
+FROM users u
+JOIN user_id_map m ON CAST(u.id AS TEXT) = m.old_id;
+
+-- projects (FK は 0007 で付与。ここで付けると INSERT 時に旧 users を参照して失敗する)
+CREATE TABLE projects_new (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  progress INTEGER DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO projects_new (id, name, description, progress, created_by, created_at, updated_at)
+SELECT pmap.new_id, p.name, p.description, p.progress, umap.new_id, p.created_at, p.updated_at
+FROM projects p
+JOIN project_id_map pmap ON CAST(p.id AS TEXT) = pmap.old_id
+JOIN user_id_map umap ON CAST(p.created_by AS TEXT) = umap.old_id;
+
+-- project_members
+CREATE TABLE project_members_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT DEFAULT 'member',
+  added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, user_id)
+);
+INSERT INTO project_members_new (id, project_id, user_id, role, added_at)
+SELECT pm.id, pmap.new_id, umap.new_id, pm.role, pm.added_at
+FROM project_members pm
+JOIN project_id_map pmap ON CAST(pm.project_id AS TEXT) = pmap.old_id
+JOIN user_id_map umap ON CAST(pm.user_id AS TEXT) = umap.old_id;
+
+-- subprojects
+CREATE TABLE subprojects_new (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO subprojects_new (id, project_id, name, description, created_at)
+SELECT smap.new_id, pmap.new_id, s.name, s.description, s.created_at
+FROM subprojects s
+JOIN subproject_id_map smap ON CAST(s.id AS TEXT) = smap.old_id
+JOIN project_id_map pmap ON CAST(s.project_id AS TEXT) = pmap.old_id;
+
+-- files
+CREATE TABLE files_new (
+  id TEXT PRIMARY KEY,
+  subproject_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  content TEXT,
+  updated_by TEXT NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  path TEXT DEFAULT '/',
+  file_type TEXT DEFAULT 'file',
+  file_size INTEGER DEFAULT 0,
+  mime_type TEXT,
+  r2_key TEXT
+);
+INSERT INTO files_new (id, subproject_id, name, content, updated_by, updated_at, path, file_type, file_size, mime_type, r2_key)
+SELECT fmap.new_id, smap.new_id, f.name, f.content, umap.new_id, f.updated_at, f.path, f.file_type, f.file_size, f.mime_type, f.r2_key
+FROM files f
+JOIN file_id_map fmap ON CAST(f.id AS TEXT) = fmap.old_id
+JOIN subproject_id_map smap ON CAST(f.subproject_id AS TEXT) = smap.old_id
+JOIN user_id_map umap ON CAST(f.updated_by AS TEXT) = umap.old_id;
+
+-- file_versions
+CREATE TABLE file_versions_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  file_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  s3_key TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  mime_type TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT NOT NULL,
+  UNIQUE(file_id, version)
+);
+INSERT INTO file_versions_new (id, file_id, version, s3_key, file_size, mime_type, created_at, created_by)
+SELECT fv.id, fmap.new_id, fv.version, fv.s3_key, fv.file_size, fv.mime_type, fv.created_at, umap.new_id
+FROM file_versions fv
+JOIN file_id_map fmap ON CAST(fv.file_id AS TEXT) = fmap.old_id
+JOIN user_id_map umap ON CAST(fv.created_by AS TEXT) = umap.old_id;
+
+-- api_keys
+CREATE TABLE api_keys_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  subproject_id TEXT NOT NULL,
+  api_key_hash TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME,
+  UNIQUE(user_id, subproject_id)
+);
+INSERT INTO api_keys_new (id, user_id, subproject_id, api_key_hash, created_at, last_used_at)
+SELECT ak.id, umap.new_id, smap.new_id, ak.api_key_hash, ak.created_at, ak.last_used_at
+FROM api_keys ak
+JOIN user_id_map umap ON CAST(ak.user_id AS TEXT) = umap.old_id
+JOIN subproject_id_map smap ON CAST(ak.subproject_id AS TEXT) = smap.old_id;
+
+-- timeline
+CREATE TABLE timeline_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  file_id TEXT,
+  action TEXT NOT NULL,
+  description TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO timeline_new (id, project_id, user_id, file_id, action, description, created_at)
+SELECT t.id, pmap.new_id, umap.new_id, fmap.new_id, t.action, t.description, t.created_at
+FROM timeline t
+JOIN project_id_map pmap ON CAST(t.project_id AS TEXT) = pmap.old_id
+JOIN user_id_map umap ON CAST(t.user_id AS TEXT) = umap.old_id
+LEFT JOIN file_id_map fmap ON CAST(t.file_id AS TEXT) = fmap.old_id;
+
+-- 元テーブルを置き換え
+ALTER TABLE users RENAME TO users_old;
+ALTER TABLE projects RENAME TO projects_old;
+ALTER TABLE project_members RENAME TO project_members_old;
+ALTER TABLE subprojects RENAME TO subprojects_old;
+ALTER TABLE files RENAME TO files_old;
+ALTER TABLE file_versions RENAME TO file_versions_old;
+ALTER TABLE api_keys RENAME TO api_keys_old;
+ALTER TABLE timeline RENAME TO timeline_old;
+
+ALTER TABLE users_new RENAME TO users;
+ALTER TABLE projects_new RENAME TO projects;
+ALTER TABLE project_members_new RENAME TO project_members;
+ALTER TABLE subprojects_new RENAME TO subprojects;
+ALTER TABLE files_new RENAME TO files;
+ALTER TABLE file_versions_new RENAME TO file_versions;
+ALTER TABLE api_keys_new RENAME TO api_keys;
+ALTER TABLE timeline_new RENAME TO timeline;
+
+-- インデックス再作成
+CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by);
+CREATE INDEX IF NOT EXISTS idx_project_members_project ON project_members(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_subprojects_project ON subprojects(project_id);
+CREATE INDEX IF NOT EXISTS idx_files_subproject ON files(subproject_id);
+CREATE INDEX IF NOT EXISTS idx_files_updated_by ON files(updated_by);
+CREATE INDEX IF NOT EXISTS idx_files_path ON files(subproject_id, path);
+CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type);
+CREATE INDEX IF NOT EXISTS idx_files_r2_key ON files(r2_key);
+CREATE INDEX IF NOT EXISTS idx_timeline_project ON timeline(project_id);
+CREATE INDEX IF NOT EXISTS idx_timeline_created_at ON timeline(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_file_versions_file_id ON file_versions(file_id);
+CREATE INDEX IF NOT EXISTS idx_file_versions_created_at ON file_versions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_subproject_id ON api_keys(subproject_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(api_key_hash);
+
+-- 古いテーブルとマップを削除
+DROP TABLE users_old;
+DROP TABLE projects_old;
+DROP TABLE project_members_old;
+DROP TABLE subprojects_old;
+DROP TABLE files_old;
+DROP TABLE file_versions_old;
+DROP TABLE api_keys_old;
+DROP TABLE timeline_old;
+DROP TABLE user_id_map;
+DROP TABLE project_id_map;
+DROP TABLE subproject_id_map;
+DROP TABLE file_id_map;
+
+PRAGMA foreign_keys=on;

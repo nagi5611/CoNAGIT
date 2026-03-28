@@ -1,0 +1,3 @@
+-- Add max_downloads to file_shares
+-- Default 30 as per requirements
+ALTER TABLE file_shares ADD COLUMN max_downloads INTEGER DEFAULT 30;

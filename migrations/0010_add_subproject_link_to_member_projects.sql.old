@@ -1,0 +1,6 @@
+-- Link member_projects to subprojects (optional)
+ALTER TABLE member_projects
+ADD COLUMN subproject_id TEXT REFERENCES subprojects(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_member_projects_subproject_id ON member_projects(subproject_id);
+

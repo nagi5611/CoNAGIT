@@ -1,0 +1,32 @@
+-- ファイルマッピング用: 地図スポットとスポット-ファイル多対多
+
+-- map_spots: 地図上の1ポイント（プロジェクト単位）
+CREATE TABLE IF NOT EXISTS map_spots (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  floor INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  x_percent REAL NOT NULL,
+  y_percent REAL NOT NULL,
+  display_order INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_map_spots_project ON map_spots(project_id);
+CREATE INDEX IF NOT EXISTS idx_map_spots_floor ON map_spots(project_id, floor);
+
+-- map_spot_files: スポットとファイルの多対多
+CREATE TABLE IF NOT EXISTS map_spot_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  spot_id TEXT NOT NULL,
+  file_id TEXT NOT NULL,
+  display_order INTEGER,
+  FOREIGN KEY (spot_id) REFERENCES map_spots(id) ON DELETE CASCADE,
+  FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_map_spot_files_spot ON map_spot_files(spot_id);
+CREATE INDEX IF NOT EXISTS idx_map_spot_files_file ON map_spot_files(file_id);
