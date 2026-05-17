@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CoNAGITv2 web</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>メディアアップロード PoC</h1>
+      <p class="hint warn">
+        サムネは Mediabunny → ffmpeg の順。ffmpeg はメモリ・時間が増えやすい（上限 80MB）。サムネ不可時は「動画のみ PUT」で
+        <code>/api/upload/presign</code> 経由の単体アップロードにフォールバック（計画 §5）。
+      </p>
+      <p class="hint">
+        API は <code>VITE_API_ORIGIN</code>（例: <code>http://127.0.0.1:3000</code>）。API 側は
+        <code>PRESIGN_REQUIRE_AUTH=0</code> でローカル検証可。
+      </p>
+      <label>動画ファイル <input id="video" type="file" accept="video/*" /></label>
+      <div class="row">
+        <button type="button" id="btnPick">ファイル確認</button>
+        <button type="button" id="btnPresign">プリサインのみ</button>
+        <button type="button" id="btnUpload">サムネ生成＋S3 二段 PUT</button>
+        <button type="button" id="btnVideoOnly">動画のみ PUT</button>
+      </div>
+      <label>ログ <textarea id="log" rows="14" readonly></textarea></label>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
